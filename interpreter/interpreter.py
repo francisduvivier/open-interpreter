@@ -85,7 +85,7 @@ class Interpreter:
     self.azure_api_version = None
     self.azure_deployment_name = None
     self.ollama_api_base = 'http://localhost:11434' # TODO FrancisD READ FROM ENV SOMEWHERE
-    self.ollama_model_name = 'llama2-uncensored' # TODO FrancisD READ FROM ENV SOMEWHERE
+    self.ollama_model_name = 'codellama:13b-code' # TODO FrancisD READ FROM ENV SOMEWHERE
     self.azure_api_type = "azure"
 
     # Get default system message
