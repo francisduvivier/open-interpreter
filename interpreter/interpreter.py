@@ -4,6 +4,7 @@ from .message_block import MessageBlock
 from .code_block import CodeBlock
 from .code_interpreter import CodeInterpreter
 from .llama_2 import get_llama_2_instance
+import types
 
 import os
 import time
@@ -15,11 +16,11 @@ from litellm import completion
 import getpass
 import requests
 import readline
-import urllib.parse
 import tokentrim as tt
 from rich import print
 from rich.markdown import Markdown
 from rich.rule import Rule
+import asyncio
 
 # Function schema for gpt-4
 function_schema = {
@@ -79,9 +80,12 @@ class Interpreter:
     self.debug_mode = False
     # Azure OpenAI
     self.use_azure = False
+    self.use_ollama = True # TODO FrancisD READ FROM ENV SOMEWHERE
     self.azure_api_base = None
     self.azure_api_version = None
     self.azure_deployment_name = None
+    self.ollama_api_base = 'http://localhost:11434' # TODO FrancisD READ FROM ENV SOMEWHERE
+    self.ollama_model_name = 'codellama:13b' # TODO FrancisD READ FROM ENV SOMEWHERE
     self.azure_api_type = "azure"
 
     # Get default system message
@@ -164,7 +168,7 @@ class Interpreter:
   def chat(self, message=None, return_messages=False):
 
     # Connect to an LLM (an large language model)
-    if not self.local:
+    if not self.local and not self.use_ollama:
       # gpt-4
       self.verify_api_key()
 
@@ -382,8 +386,17 @@ class Interpreter:
       
       for _ in range(3):  # 3 retries
         try:
-          
-            if self.use_azure:
+            if self.use_ollama:
+              response = completion(
+                model=self.ollama_model_name,
+                api_base=self.ollama_api_base,
+                custom_llm_provider="ollama",
+                messages=messages,
+                functions=[function_schema],
+                temperature=self.temperature,
+                stream=True,
+              )
+            elif self.use_azure:
               response = completion(
                   model=self.azure_deployment_name,
                   messages=messages,
@@ -472,6 +485,17 @@ class Interpreter:
     in_function_call = False
     llama_function_call_finished = False
     self.active_block = None
+
+    async def async_generator_to_list(async_gen):
+      result = []
+      async for item in async_gen:
+        result.append(item)
+      return result
+
+    def is_async_generator(obj):
+      return isinstance(obj, types.AsyncGeneratorType)
+    if(is_async_generator(response)):
+      response = asyncio.run(async_generator_to_list(response))
 
     for chunk in response:
       if self.use_azure and ('choices' not in chunk or len(chunk['choices']) == 0):
@@ -594,7 +618,7 @@ class Interpreter:
       self.active_block.update_from_message(self.messages[-1])
 
       # Check if we're finished
-      if chunk["choices"][0]["finish_reason"] or llama_function_call_finished:
+      if "finish_reason" in chunk["choices"][0] and chunk["choices"][0]["finish_reason"] or llama_function_call_finished:
         if chunk["choices"][
             0]["finish_reason"] == "function_call" or llama_function_call_finished:
           # Time to call the function!
